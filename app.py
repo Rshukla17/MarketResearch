@@ -22,7 +22,7 @@ import streamlit as st
 LOGO_PATH = Path(__file__).parent / "logo.png"
 
 with st.sidebar:
-    st.image(str(LOGO_PATH), use_container_width=True)
+    st.image(str(LOGO_PATH), width='stretch')
     st.markdown("---")
 
 st.set_page_config(page_title="Brahmin Terminal", layout="wide")
@@ -687,7 +687,7 @@ if compare_mode:
     show["Vol 1Y %"] = show["Vol 1Y %"].apply(lambda v: _fmt_num(v, 2))
     show["Piotroski"] = show["Piotroski"].apply(lambda v: _fmt_int(v))
 
-    st.dataframe(show, use_container_width=True, hide_index=True)
+    st.dataframe(show, width='stretch', hide_index=True)
 
     if ollama_available():
         st.markdown("### Compare analyst note")
@@ -771,7 +771,7 @@ try:
                 ]
             )
             fig.update_layout(height=520, margin=dict(l=10, r=10, t=30, b=10))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         else:
             st.warning("No price data returned.")
 
@@ -796,14 +796,14 @@ try:
 
         st.markdown("### Earnings actuals (SEC XBRL)")
         st.write("EPS last 4 quarters")
-        st.dataframe(pd.DataFrame(eps_q), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(eps_q), width='stretch', hide_index=True)
         st.write("Revenue last 4 quarters")
-        st.dataframe(pd.DataFrame(rev_q), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rev_q), width='stretch', hide_index=True)
 
         st.markdown("### Piotroski breakdown")
         st.dataframe(
             pd.DataFrame([{"check": k, "pass": v} for k, v in pio["checks"].items()]),
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
         )
         if pio["missing"]:
@@ -814,7 +814,7 @@ try:
 
         with tabs[0]:
             st.markdown("SEC filings")
-            st.dataframe(pd.DataFrame(filings), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(filings), width='stretch', hide_index=True)
 
             st.markdown("News")
             if news is None or news.empty:
@@ -833,7 +833,7 @@ try:
 
             st.markdown("Largest daily moves")
             if moves:
-                st.dataframe(pd.DataFrame(moves), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(moves), width='stretch', hide_index=True)
             else:
                 st.caption("No moves computed.")
 
@@ -924,7 +924,7 @@ try:
                 show["Price"] = show["Price"].apply(lambda v: _fmt(v, 2))
                 show["Return 1Y %"] = show["Return 1Y %"].apply(lambda v: _fmt(v, 2))
                 show["Vol 1Y %"] = show["Vol 1Y %"].apply(lambda v: _fmt(v, 2))
-                st.dataframe(show, use_container_width=True, hide_index=True)
+                st.dataframe(show, width='stretch', hide_index=True)
 
                 if ollama_available():
                     if st.button("Ask AI to summarize competition landscape"):
