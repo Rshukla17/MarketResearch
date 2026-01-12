@@ -2,5 +2,7 @@ streamlit
 pandas
 requests
 yfinance
-lxml
-lightweight_charts_v5
+python-dateutil
+streamlit-lightweight-charts-v5
+# optional (only if you actually use it in Cloud)
+ollama
