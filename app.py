@@ -22,14 +22,16 @@ from lightweight_charts_v5 import lightweight_charts_v5_component
 # CONFIG
 # -----------------------------
 from pathlib import Path
+import streamlit as st
+
+st.set_page_config(page_title="Brahmin Terminal", layout="wide")  # MUST be first st.* call
 
 LOGO_PATH = Path(__file__).parent / "logo.png"
 
 with st.sidebar:
-    st.image(str(LOGO_PATH), width='stretch')
+    st.image(str(LOGO_PATH), use_container_width=True)
     st.markdown("---")
 
-st.set_page_config(page_title="Brahmin Terminal", layout="wide")
 st.title("Brahmin Terminal")
 st.caption("Astrology for Equities")
 
