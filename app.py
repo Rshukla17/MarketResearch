@@ -4,20 +4,24 @@ import traceback
 import pandas as pd
 import requests
 import streamlit as st
-import plotly.graph_objects as go
 import yfinance as yf
 import xml.etree.ElementTree as ET
+
+from datetime import datetime, timezone
 
 try:
     import ollama
 except Exception:
     ollama = None
 
+# NEW: lightweight charts component (v5)
+from lightweight_charts_v5 import lightweight_charts_v5_component
+
+
 # -----------------------------
 # CONFIG
 # -----------------------------
 from pathlib import Path
-import streamlit as st
 
 LOGO_PATH = Path(__file__).parent / "logo.png"
 
@@ -357,6 +361,97 @@ def price_5y(ticker: str) -> pd.DataFrame:
     elif "Datetime" in h.columns:
         h = h.rename(columns={"Datetime": "date"})
     return h
+
+
+# NEW: range-based fetch for chart (handles 1D, 1W, 1M, YTD, 1Y, MAX)
+@st.cache_data(ttl=5 * 60)
+def price_range_ohlc(ticker: str, range_key: str) -> pd.DataFrame:
+    """
+    Returns df with columns:
+    time (unix seconds), open, high, low, close, volume, datetime (UTC)
+    """
+    range_key = (range_key or "").upper().strip()
+
+    # Choose data resolution per range so 1D/1W are not useless
+    if range_key == "1D":
+        period = "1d"
+        interval = "5m"
+        start = None
+    elif range_key == "1W":
+        period = "5d"
+        interval = "15m"
+        start = None
+    elif range_key == "1M":
+        period = "1mo"
+        interval = "1h"
+        start = None
+    elif range_key == "YTD":
+        period = None
+        interval = "1d"
+        now = datetime.now(timezone.utc)
+        start = datetime(now.year, 1, 1, tzinfo=timezone.utc)
+    elif range_key == "1Y":
+        period = "1y"
+        interval = "1d"
+        start = None
+    else:  # MAX
+        period = "max"
+        interval = "1d"
+        start = None
+
+    try:
+        if start is not None:
+            df = yf.download(ticker, start=start.date().isoformat(), interval=interval, progress=False)
+        else:
+            df = yf.download(ticker, period=period, interval=interval, progress=False)
+
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        # yfinance can return MultiIndex columns in some cases
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        df = df.reset_index()
+        ts_col = "Datetime" if "Datetime" in df.columns else "Date"
+        if ts_col not in df.columns:
+            return pd.DataFrame()
+
+        # CRITICAL TIMESTAMP FIX:
+        # force everything to tz-aware UTC then convert to unix seconds
+        df[ts_col] = pd.to_datetime(df[ts_col], utc=True, errors="coerce")
+        df = df.dropna(subset=[ts_col])
+
+        df = df.rename(
+            columns={
+                "Open": "open",
+                "High": "high",
+                "Low": "low",
+                "Close": "close",
+                "Volume": "volume",
+            }
+        )
+
+        # Ensure numeric
+        for c in ["open", "high", "low", "close", "volume"]:
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors="coerce")
+        df = df.dropna(subset=["open", "high", "low", "close"])
+
+        df["time"] = (df[ts_col].astype("int64") // 1_000_000_000).astype(int)
+        df["datetime"] = df[ts_col]
+
+        # Keep only what we need
+        keep = ["time", "open", "high", "low", "close", "volume", "datetime"]
+        for k in keep:
+            if k not in df.columns:
+                df[k] = None
+
+        df = df[keep].sort_values("time").reset_index(drop=True)
+        return df
+
+    except Exception:
+        return pd.DataFrame()
 
 
 @st.cache_data(ttl=10 * 60)
@@ -757,23 +852,65 @@ try:
         c4.metric("Employees", safe_text(info.get("fullTimeEmployees")))
         c5.metric("CEO", safe_text(info.get("ceo_name")))
 
-        st.markdown("### Price (5 years)")
-        if not hist.empty:
-            fig = go.Figure(
-                data=[
-                    go.Candlestick(
-                        x=hist["date"],
-                        open=hist["Open"],
-                        high=hist["High"],
-                        low=hist["Low"],
-                        close=hist["Close"],
-                    )
-                ]
+        st.markdown("### Price")
+
+        # NEW: range buttons (same section, minimal UI, replaces Plotly’s missing range selector)
+        range_key = st.radio(
+            "Range",
+            ["1D", "1W", "1M", "YTD", "1Y", "MAX"],
+            horizontal=True,
+            label_visibility="collapsed",
+            key=f"range_{ticker}",
+        )
+
+        px = price_range_ohlc(ticker, range_key)
+        if not px.empty:
+            candles = px[["time", "open", "high", "low", "close"]].to_dict("records")
+
+            # Basic dark theme that matches your app
+            chart_opts = {
+                "layout": {"background": {"color": "#0e1117"}, "textColor": "#e6e6e6"},
+                "grid": {"vertLines": {"color": "rgba(255,255,255,0.06)"}, "horzLines": {"color": "rgba(255,255,255,0.06)"}},
+                "timeScale": {
+                    "timeVisible": range_key in ["1D", "1W", "1M"],
+                    "secondsVisible": False,
+                    "borderColor": "rgba(255,255,255,0.15)",
+                },
+                "rightPriceScale": {"borderColor": "rgba(255,255,255,0.15)"},
+                "crosshair": {
+                    "mode": 0,
+                    "vertLine": {"width": 1, "color": "rgba(255,255,255,0.12)", "labelBackgroundColor": "rgba(255,255,255,0.12)"},
+                    "horzLine": {"width": 1, "color": "rgba(255,255,255,0.12)", "labelBackgroundColor": "rgba(255,255,255,0.12)"},
+                },
+            }
+
+            lightweight_charts_v5_component(
+                f"price_chart_{ticker}",
+                charts=[
+                    {
+                        "series": [
+                            {
+                                "type": "Candlestick",
+                                "data": candles,
+                                "options": {
+                                    "upColor": "#26a69a",
+                                    "downColor": "#ef5350",
+                                    "borderUpColor": "#26a69a",
+                                    "borderDownColor": "#ef5350",
+                                    "wickUpColor": "#26a69a",
+                                    "wickDownColor": "#ef5350",
+                                },
+                            }
+                        ],
+                        "options": chart_opts,
+                        "height": 520,
+                    }
+                ],
+                height=520,
+                key=f"price_chart_{ticker}_{range_key}",
             )
-            fig.update_layout(height=520, margin=dict(l=10, r=10, t=30, b=10))
-            st.plotly_chart(fig, width='stretch')
         else:
-            st.warning("No price data returned.")
+            st.warning("No price data returned for this range.")
 
         st.markdown("### Company profile")
         p1, p2 = st.columns(2)
