@@ -4,3 +4,4 @@ requests
 plotly
 yfinance
 lxml
+lightweight_charts_v5
